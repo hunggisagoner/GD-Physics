@@ -16,6 +16,10 @@
 		"interface"
 	],
 
+	"links": {
+		"source": "https://github.com/hunggisagoner/GD-Physics"
+	},
+
 	"dependencies": {
 		"geode.node-ids": ">=v1.20.0"
 	}
