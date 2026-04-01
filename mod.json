@@ -8,7 +8,7 @@
 	},
 	"id": "hunggisagoner.gd-physics",
 	"name": "GD Physics",
-	"version": "v1.0.0",
+	"version": "v1.0.2",
 	"developer": "hunggisagoner",
 	"description": "Add interactive physics to GD menus.",
 	

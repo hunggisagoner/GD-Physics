@@ -1,3 +1,2 @@
 # GD Physics
 A fun and interactive physics mod for Geometry Dash using the [Geode SDK](https://geode-sdk.org/). This mod brings menu elements to life by applying real-time physics, collisions, and gravity to buttons and UI nodes.
-
