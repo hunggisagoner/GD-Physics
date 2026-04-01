@@ -1,5 +1,5 @@
 {
-	"geode": "5.3.0",
+	"geode": "5.4.0",
 	"gd": {
 		"win": "2.2081",
 		"android": "2.2081",
@@ -8,7 +8,7 @@
 	},
 	"id": "hunggisagoner.gd-physics",
 	"name": "GD Physics",
-	"version": "v1.0.1",
+	"version": "v1.0.0",
 	"developer": "hunggisagoner",
 	"description": "Add interactive physics to GD menus.",
 	
@@ -20,7 +20,35 @@
 		"source": "https://github.com/hunggisagoner/GD-Physics"
 	},
 
+	"settings": {
+		"menu-layer-physics": {
+			"name": "Menu Layer Physics",
+			"type": "bool",
+			"default": true,
+			"description": "Enable/disable physics on the Menu Layer."
+		},
+		"creator-layer-physics": {
+			"name": "Creator Layer Physics",
+			"type": "bool",
+			"default": true,
+			"description": "Enable/disable physics on the Creator Layer."
+		},
+		"gravity": {
+			"name": "Gravity Strength",
+			"type": "float",
+			"default": -2000.0,
+			"description": "Change the strength of gravity (Default: -2000.0)."
+		},
+		"wall-bounce": {
+			"name": "Wall Bounciness",
+			"type": "float",
+			"default": -0.6,
+			"description": "Change the bounciness of walls (Default: -0.6)."
+		}
+	},
+
 	"dependencies": {
-		"geode.node-ids": ">=v1.20.0"
+		"geode.node-ids": ">=v1.23.3",
+		"alphalaneous.alphas-ui-pack": ">=v1.0.7"
 	}
 }

@@ -1,12 +1,15 @@
 #include <Geode/Geode.hpp>
 #include <Geode/modify/MenuLayer.hpp>
 #include <Geode/modify/CreatorLayer.hpp>
+#include <alphalaneous.alphas-ui-pack/include/API.hpp>
+#include <cmath> // Thêm thư viện toán học để dùng std::abs
 
 #ifdef GEODE_IS_WINDOWS
 #include <Windows.h>
 #endif
 
 using namespace geode::prelude;
+using namespace alpha::prelude;
 
 struct NodePhysics {
     CCPoint pos;
@@ -17,16 +20,17 @@ struct NodePhysics {
 
 static std::map<std::string, NodePhysics> s_globalPhysics;
 static bool s_isDragMode = false;
+static bool s_isAquaticMode = false;
 static bool s_isResetting = false;
 static bool s_triggerBounce = false;
 static float s_bounceStrength = 1500.f;
 static std::string s_lastInputString = "";
 
-class PhysicsMenuPopup : public CCLayerColor {
+class PhysicsMenuPopup : public FLAlertLayer {
 protected:
     CCTextInputNode* m_bounceInput = nullptr;
-    CCScale9Sprite* m_inputBg = nullptr;
-    CCSprite* m_dragCheckSprite = nullptr;
+    CCMenuItemToggler* m_dragToggler = nullptr;
+    CCMenuItemToggler* m_aquaticToggler = nullptr;
 
 public:
     static PhysicsMenuPopup* create() {
@@ -39,56 +43,73 @@ public:
         return nullptr;
     }
 
-    bool init() override {
-        if (!CCLayerColor::initWithColor({0, 0, 0, 150})) return false;
+    bool init() {
+        if (!FLAlertLayer::init(150)) return false;
         
         auto winSize = CCDirector::get()->getWinSize();
         
         auto bg = CCScale9Sprite::create("GJ_square01.png");
         bg->setContentSize({350.f, 250.f});
         bg->setPosition(winSize.width / 2, winSize.height / 2);
-        this->addChild(bg);
+        this->m_mainLayer->addChild(bg);
         
         auto menu = CCMenu::create();
-        menu->setTouchPriority(-502);
         menu->setPosition(0, 0);
+        menu->setTouchPriority(-501); 
+        this->m_mainLayer->addChild(menu);
         
         auto closeSpr = CCSprite::createWithSpriteFrameName("GJ_closeBtn_001.png");
         auto closeBtn = CCMenuItemSpriteExtra::create(closeSpr, this, menu_selector(PhysicsMenuPopup::onClose));
         closeBtn->setPosition(winSize.width / 2 - 175.f, winSize.height / 2 + 125.f);
         menu->addChild(closeBtn);
         
-        m_dragCheckSprite = CCSprite::createWithSpriteFrameName(s_isDragMode ? "GJ_checkOn_001.png" : "GJ_checkOff_001.png");
-        auto dragBtn = CCMenuItemSpriteExtra::create(m_dragCheckSprite, this, menu_selector(PhysicsMenuPopup::onToggleDrag));
-        dragBtn->setPosition(winSize.width / 2 - 100.f, winSize.height / 2 + 50.f);
-        dragBtn->setScale(1.2f);
-        menu->addChild(dragBtn);
+        auto checkOn = CCSprite::createWithSpriteFrameName("GJ_checkOn_001.png");
+        auto checkOff = CCSprite::createWithSpriteFrameName("GJ_checkOff_001.png");
+        checkOn->setScale(1.2f);
+        checkOff->setScale(1.2f);
+        m_dragToggler = CCMenuItemToggler::create(checkOff, checkOn, this, menu_selector(PhysicsMenuPopup::onToggleDrag));
+        m_dragToggler->setPosition(winSize.width / 2 - 100.f, winSize.height / 2 + 65.f);
+        m_dragToggler->toggle(s_isDragMode);
+        menu->addChild(m_dragToggler);
         
         auto dragLabel = CCLabelBMFont::create("Enable Drag", "bigFont.fnt");
         dragLabel->setScale(0.7f);
         dragLabel->setAnchorPoint({0.f, 0.5f});
-        dragLabel->setPosition(winSize.width / 2 - 60.f, winSize.height / 2 + 50.f);
-        this->addChild(dragLabel);
+        dragLabel->setPosition(winSize.width / 2 - 60.f, winSize.height / 2 + 65.f);
+        this->m_mainLayer->addChild(dragLabel);
+
+        auto checkOnAq = CCSprite::createWithSpriteFrameName("GJ_checkOn_001.png");
+        auto checkOffAq = CCSprite::createWithSpriteFrameName("GJ_checkOff_001.png");
+        checkOnAq->setScale(1.2f);
+        checkOffAq->setScale(1.2f);
+        m_aquaticToggler = CCMenuItemToggler::create(checkOffAq, checkOnAq, this, menu_selector(PhysicsMenuPopup::onToggleAquatic));
+        m_aquaticToggler->setPosition(winSize.width / 2 - 100.f, winSize.height / 2 + 20.f);
+        m_aquaticToggler->toggle(s_isAquaticMode);
+        menu->addChild(m_aquaticToggler);
+        
+        auto aquaticLabel = CCLabelBMFont::create("Aquatic Mode", "bigFont.fnt");
+        aquaticLabel->setScale(0.7f);
+        aquaticLabel->setAnchorPoint({0.f, 0.5f});
+        aquaticLabel->setPosition(winSize.width / 2 - 60.f, winSize.height / 2 + 20.f);
+        this->m_mainLayer->addChild(aquaticLabel);
         
         float boxX = winSize.width / 2 - 60.f; 
-        float boxY = winSize.height / 2 - 10.f;
+        float boxY = winSize.height / 2 - 25.f;
 
-        m_inputBg = CCScale9Sprite::create("square02_small.png");
-        m_inputBg->setContentSize({65.f, 30.f});
-        m_inputBg->setOpacity(100);
-        m_inputBg->setPosition(boxX, boxY);
-        this->addChild(m_inputBg);
+        auto inputBg = CCScale9Sprite::create("square02_small.png");
+        inputBg->setContentSize({65.f, 30.f});
+        inputBg->setOpacity(100);
+        inputBg->setPosition(boxX, boxY);
+        this->m_mainLayer->addChild(inputBg);
         
         m_bounceInput = CCTextInputNode::create(55.f, 30.f, "Bounce Force", "bigFont.fnt");
         m_bounceInput->setAllowedChars("0123456789.-");
         m_bounceInput->setAnchorPoint({0.f, 0.5f});
-        m_bounceInput->setPosition(224.5, 151);
+        m_bounceInput->setPosition(boxX - 32.5f, boxY);
         m_bounceInput->setMaxLabelScale(0.6f);
         m_bounceInput->setLabelPlaceholderColor({150, 150, 150});
-        
         m_bounceInput->setString(s_lastInputString.c_str());
-        
-        this->addChild(m_bounceInput);
+        this->m_mainLayer->addChild(m_bounceInput);
         
         auto bounceSpr = ButtonSprite::create("Bounce!");
         bounceSpr->setScale(0.85f);
@@ -108,51 +129,56 @@ public:
         infoBtn->setPosition(winSize.width / 2 + 150.f, winSize.height / 2 + 100.f);
         menu->addChild(infoBtn);
         
-        this->addChild(menu);
-        this->setTouchEnabled(true);
         this->setKeypadEnabled(true);
+        this->setTouchEnabled(true);
         return true;
     }
-    
+
     void registerWithTouchDispatcher() override {
-        CCTouchDispatcher::get()->addTargetedDelegate(this, -501, true);
+        CCTouchDispatcher::get()->addTargetedDelegate(this, -500, true);
     }
-    
-    bool ccTouchBegan(CCTouch* touch, CCEvent*) override {
-        if (m_inputBg && m_inputBg->boundingBox().containsPoint(this->convertToNodeSpace(touch->getLocation()))) {
+
+    bool ccTouchBegan(CCTouch* touch, CCEvent* event) override {
+        auto winSize = CCDirector::get()->getWinSize();
+        CCPoint localPos = this->m_mainLayer->convertToNodeSpace(touch->getLocation());
+        CCRect inputRect = CCRectMake(
+            winSize.width / 2 - 60.f - 32.5f, 
+            winSize.height / 2 - 25.f - 15.f, 
+            65.f, 30.f
+        );
+        if (inputRect.containsPoint(localPos)) {
             if (m_bounceInput) m_bounceInput->onClickTrackNode(true);
         } else {
             if (m_bounceInput) m_bounceInput->onClickTrackNode(false);
         }
         return true; 
     }
+
+    void keyBackClicked() override {
+        this->onClose(nullptr);
+    }
     
     void onClose(CCObject*) {
-        if (m_bounceInput) {
-            s_lastInputString = m_bounceInput->getString();
-        }
+        if (m_bounceInput) s_lastInputString = m_bounceInput->getString();
         this->removeFromParent();
     }
     
     void onToggleDrag(CCObject* sender) {
         s_isDragMode = !s_isDragMode;
-        if (m_dragCheckSprite) {
-            auto frameName = s_isDragMode ? "GJ_checkOn_001.png" : "GJ_checkOff_001.png";
-            auto frame = CCSpriteFrameCache::get()->spriteFrameByName(frameName);
-            if (frame) m_dragCheckSprite->setDisplayFrame(frame);
-        }
+    }
+
+    void onToggleAquatic(CCObject* sender) {
+        s_isAquaticMode = !s_isAquaticMode;
     }
     
     void onBounce(CCObject*) {
         if (m_bounceInput) {
             std::string val = m_bounceInput->getString();
             s_lastInputString = val;
-            
             if (val.empty()) {
-                FLAlertLayer::create("Error", "Please enter a value for Bounce Force!", "OK")->show();
+                FLAlertLayer::create("Error", "Please enter a value!", "OK")->show();
                 return;
             }
-
             auto parsedVal = geode::utils::numFromString<float>(val);
             if (parsedVal.isErr()) {
                 FLAlertLayer::create("Error", "Invalid number format!", "OK")->show();
@@ -170,8 +196,8 @@ public:
 
     void onInfo(CCObject*) {
         FLAlertLayer::create(
-            "GD Physics",
-            "<cg>Enable Drag</c> will allow you to drag nodes by holding and dragging them.\n\n<cy>Bounce</c> will cause the nodes to bounce when you click on the desired force and press it, according to the set force.\n\n<cr>Reset Physics</c> will return the nodes to their original positions and reset the physics.",
+            "GD Physics", 
+            "<cg>Enable Drag</c>: Drag nodes on Mobile/Mac.\n<cb>Right Click</c>: Drag nodes on PC.\n<cl>Aquatic Mode</c>: Floaty water physics & splashes.\n<cy>Bounce</c>: Bounces the nodes.\n<cr>Reset</c>: Original positions.", 
             "OK"
         )->show();
     }
@@ -182,7 +208,7 @@ protected:
     CCNode* m_draggedNode = nullptr;
     CCPoint m_lastTouchPos;
     CCPoint m_prevNodePos;
-    bool m_isRightClickDragging = false;
+    bool m_isRightClickDragging = false; 
     CCMenu* m_uiMenu = nullptr;
 
 public:
@@ -223,7 +249,46 @@ public:
 
     void onOpenMenu(CCObject*) {
         auto popup = PhysicsMenuPopup::create();
-        CCDirector::get()->getRunningScene()->addChild(popup, 1000000);
+        popup->show();
+    }
+
+    // HIỆU ỨNG: Bong bóng nước bay lên
+    void spawnBubble(CCPoint pos) {
+        if (!this->getParent()) return;
+        auto bubble = CCScale9Sprite::create("square02_small.png");
+        bubble->setContentSize({(float)(rand() % 3 + 2), (float)(rand() % 3 + 2)});
+        bubble->setPosition(pos);
+        bubble->setColor({150, 220, 255}); // Màu xanh ngọc
+        bubble->setOpacity(100 + rand() % 100);
+        this->getParent()->addChild(bubble, this->getZOrder() - 1);
+
+        auto moveUp = CCMoveBy::create(1.0f + (rand() % 10) / 10.f, ccp((rand() % 40) - 20.f, 50.f + rand() % 50));
+        auto fadeOut = CCFadeOut::create(1.0f);
+        auto spawn = CCSpawn::create(moveUp, fadeOut, nullptr);
+        bubble->runAction(CCSequence::create(spawn, CCRemoveSelf::create(), nullptr));
+    }
+
+    // HIỆU ỨNG: Nước bắn tung tóe (Splash)
+    void spawnSplash(CCPoint pos) {
+        if (!this->getParent()) return;
+        int numDrops = 10 + rand() % 10;
+        for (int i = 0; i < numDrops; i++) {
+            auto drop = CCScale9Sprite::create("square02_small.png");
+            drop->setContentSize({3.f, 3.f});
+            drop->setPosition(pos);
+            drop->setColor({50, 150, 255}); // Màu nước biển đậm
+            this->getParent()->addChild(drop, this->getZOrder() + 1);
+
+            float dx = (rand() % 120) - 60.f; 
+            float height = 40.f + rand() % 60;
+            
+            // CCJumpBy tạo quỹ đạo rơi cong cực kỳ giống giọt nước thật
+            auto jump = CCJumpBy::create(0.4f + (rand() % 4) / 10.f, ccp(dx, -20.f - (rand() % 20)), height, 1);
+            auto fade = CCFadeOut::create(0.5f);
+            auto spawn = CCSpawn::create(jump, fade, nullptr);
+            
+            drop->runAction(CCSequence::create(spawn, CCRemoveSelf::create(), nullptr));
+        }
     }
 
     void findButtons(CCNode* node, std::vector<CCNode*>& buttons) {
@@ -236,19 +301,14 @@ public:
         }
 
         std::string id = node->getID();
-        if (id == "close-button" || id == "back-button" || 
-            id == "exit-button" || id == "options-button" || id == "main-title") {
-            return; 
-        }
+        if (id == "close-button" || id == "back-button" || id == "exit-button" || id == "options-button" || id == "main-title") return; 
 
         bool isTarget = typeinfo_cast<CCMenuItem*>(node) || id == "creator-title";
 
         if (isTarget && !id.empty()) {
             buttons.push_back(node);
         } else {
-            for (auto child : node->getChildrenExt<CCNode*>()) {
-                findButtons(child, buttons);
-            }
+            for (auto child : node->getChildrenExt<CCNode*>()) findButtons(child, buttons);
         }
     }
 
@@ -275,22 +335,17 @@ public:
         }
 
         if (hasNewNodes) {
-            for(int i = 0; i < 300; i++) {
-                simulatePhysics(1.0f/60.0f, nodes);
-            }
-            for (auto node : nodes) {
-                node->setPosition(s_globalPhysics[node->getID()].pos);
-            }
+            for(int i = 0; i < 300; i++) simulatePhysics(1.0f/60.0f, nodes);
+            for (auto node : nodes) node->setPosition(s_globalPhysics[node->getID()].pos);
         }
     }
 
     bool ccTouchBegan(CCTouch* touch, CCEvent* event) override {
         if (m_uiMenu && m_uiMenu->isVisible()) {
-            auto pos = m_uiMenu->convertToNodeSpace(touch->getLocation());
             for (auto child : m_uiMenu->getChildrenExt<CCNode*>()) {
-                if (child->boundingBox().containsPoint(pos)) {
-                    return false;
-                }
+                CCPoint localPos = child->convertToNodeSpace(touch->getLocation());
+                CCSize size = child->getContentSize();
+                if (CCRectMake(0, 0, size.width, size.height).containsPoint(localPos)) return false;
             }
         }
 
@@ -298,15 +353,14 @@ public:
 
         auto touchPos = touch->getLocation();
         auto nodes = getPhysicsNodes();
-        for (auto node : nodes) {
+        
+        for (auto it = nodes.rbegin(); it != nodes.rend(); ++it) {
+            auto node = *it;
             std::string id = node->getID();
             if (!s_globalPhysics[id].initialized) continue;
 
-            auto size = node->getScaledContentSize();
-            float r = std::max(15.f, (size.width + size.height) / 4.0f);
-            auto worldPos = node->getParent()->convertToWorldSpace(node->getPosition());
-
-            if (ccpDistance(worldPos, touchPos) <= r) {
+            CCPoint parentSpaceTouch = node->getParent()->convertToNodeSpace(touchPos);
+            if (node->boundingBox().containsPoint(parentSpaceTouch)) {
                 m_draggedNode = node;
                 m_lastTouchPos = touchPos;
                 s_globalPhysics[id].velocity = ccp(0, 0); 
@@ -314,7 +368,7 @@ public:
                 return true; 
             }
         }
-        return true; 
+        return false; 
     }
 
     void ccTouchMoved(CCTouch* touch, CCEvent* event) override {
@@ -327,16 +381,24 @@ public:
     }
 
     void ccTouchEnded(CCTouch*, CCEvent*) override {
-        if (m_draggedNode && !m_isRightClickDragging) {
-            m_draggedNode = nullptr;
-        }
+        if (m_draggedNode && !m_isRightClickDragging) m_draggedNode = nullptr;
     }
 
     void ccTouchCancelled(CCTouch* touch, CCEvent* event) override { ccTouchEnded(touch, event); }
 
     void simulatePhysics(float dt, const std::vector<CCNode*>& nodes) {
-        float gravity = -2000.f;
-        float wallBounce = -0.6f;
+        float gravity = static_cast<float>(Mod::get()->getSettingValue<double>("gravity"));
+        float wallBounce = static_cast<float>(Mod::get()->getSettingValue<double>("wall-bounce"));
+        float friction = 1.0f; 
+        float bounciness = std::abs(wallBounce) + 0.2f;
+
+        if (s_isAquaticMode) {
+            gravity = -300.f;      
+            wallBounce = -0.3f;    
+            bounciness = 0.3f;     
+            friction = 0.94f;      
+        }
+
         auto winSize = CCDirector::get()->getWinSize();
 
         for (auto node : nodes) {
@@ -346,12 +408,19 @@ public:
             auto size = node->getScaledContentSize();
             float r = std::max(15.f, (size.width + size.height) / 4.0f);
 
+            phys.velocity.x *= friction;
+            phys.velocity.y *= friction;
+
             phys.velocity.y += gravity * dt;
             auto newPos = phys.pos + phys.velocity * dt;
             auto worldPos = node->getParent()->convertToWorldSpace(newPos);
 
             if (worldPos.y - r < 0.f) {
                 worldPos.y = r;
+                // KÍCH HOẠT SPLASH: Bắn nước khi đập mạnh xuống sàn
+                if (s_isAquaticMode && phys.velocity.y < -150.f) {
+                    spawnSplash(node->getParent()->convertToNodeSpace(ccp(worldPos.x, 0.f)));
+                }
                 phys.velocity.y *= wallBounce;
                 phys.velocity.x *= 0.95f; 
             } else if (worldPos.y + r > winSize.height) {
@@ -415,7 +484,6 @@ public:
                         float velAlongNormal = rvx * nx + rvy * ny;
 
                         if (velAlongNormal < 0) {
-                            float bounciness = 0.8f; 
                             float impulse = -(1.0f + bounciness) * velAlongNormal;
                             impulse /= 2.0f; 
 
@@ -435,31 +503,36 @@ public:
         auto nodes = getPhysicsNodes();
         bool hasNewNodes = false;
 
-#ifdef GEODE_IS_WINDOWS
         auto winSize = CCDirector::get()->getWinSize();
-        POINT pt;
         CCPoint mousePos = ccp(0, 0);
-        if (GetCursorPos(&pt)) {
-            HWND hwnd = FindWindowA(NULL, "Geometry Dash");
-            if (hwnd) {
-                ScreenToClient(hwnd, &pt);
-                auto frameSize = CCDirector::get()->getOpenGLView()->getFrameSize();
-                float mouseX = (pt.x / frameSize.width) * winSize.width;
-                float mouseY = winSize.height - ((pt.y / frameSize.height) * winSize.height);
-                mousePos = ccp(mouseX, mouseY);
+        bool isRightClick = false;
+
+#ifdef GEODE_IS_WINDOWS
+        isRightClick = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
+        if (isRightClick) {
+            POINT pt;
+            if (GetCursorPos(&pt)) {
+                HWND hwnd = WindowFromDC(wglGetCurrentDC());
+                if (hwnd) {
+                    ScreenToClient(hwnd, &pt);
+                    auto frameSize = CCDirector::get()->getOpenGLView()->getFrameSize();
+                    float mouseX = (pt.x / frameSize.width) * winSize.width;
+                    float mouseY = winSize.height - ((pt.y / frameSize.height) * winSize.height);
+                    mousePos = ccp(mouseX, mouseY);
+                }
             }
         }
-        
-        bool isRightClick = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
+#endif
+
         if (isRightClick) {
             if (!m_draggedNode) {
-                for (auto node : nodes) {
+                for (auto it = nodes.rbegin(); it != nodes.rend(); ++it) {
+                    auto node = *it;
                     std::string id = node->getID();
                     if (!s_globalPhysics[id].initialized) continue;
-                    auto size = node->getScaledContentSize();
-                    float r = std::max(15.f, (size.width + size.height) / 4.0f);
-                    auto worldPos = node->getParent()->convertToWorldSpace(node->getPosition());
-                    if (ccpDistance(worldPos, mousePos) <= r) {
+
+                    CCPoint parentSpaceTouch = node->getParent()->convertToNodeSpace(mousePos);
+                    if (node->boundingBox().containsPoint(parentSpaceTouch)) {
                         m_draggedNode = node;
                         m_lastTouchPos = mousePos;
                         m_isRightClickDragging = true;
@@ -477,7 +550,6 @@ public:
             m_draggedNode = nullptr;
             m_isRightClickDragging = false;
         }
-#endif
 
         if (m_draggedNode) {
             std::string id = m_draggedNode->getID();
@@ -503,10 +575,28 @@ public:
             for (auto node : nodes) {
                 std::string id = node->getID();
                 if (s_globalPhysics.count(id)) {
-                    s_globalPhysics[id].velocity.y += s_bounceStrength;
+                    s_globalPhysics[id].velocity.y += (s_isAquaticMode ? s_bounceStrength * 0.7f : s_bounceStrength);
+                    // KÍCH HOẠT SPLASH: Bắn nước khi nhấn Bounce dưới nước
+                    if (s_isAquaticMode) spawnSplash(node->getPosition());
                 }
             }
             s_triggerBounce = false;
+        }
+
+        // KÍCH HOẠT BUBBLE: Bong bóng lơ lửng nếu node đang di chuyển dưới nước
+        if (s_isAquaticMode) {
+            for (auto node : nodes) {
+                std::string id = node->getID();
+                if (s_globalPhysics.count(id)) {
+                    auto vel = s_globalPhysics[id].velocity;
+                    // Tạo bong bóng nếu node di chuyển nhanh
+                    if (std::abs(vel.x) > 40.f || std::abs(vel.y) > 40.f) {
+                        if (rand() % 100 < 15) { // 15% tỷ lệ spawn bong bóng mỗi khung hình
+                            spawnBubble(node->getPosition());
+                        }
+                    }
+                }
+            }
         }
 
         for (auto node : nodes) {
@@ -522,9 +612,7 @@ public:
         }
 
         if (hasNewNodes) {
-            for(int i = 0; i < 300; i++) {
-                simulatePhysics(1.0f/60.0f, nodes);
-            }
+            for(int i = 0; i < 300; i++) simulatePhysics(1.0f/60.0f, nodes);
         } else {
             simulatePhysics(dt, nodes);
         }
@@ -538,7 +626,7 @@ public:
 PhysicsOverlay* addPhysicsOverlay(CCLayer* layer) {
     auto overlay = PhysicsOverlay::create();
     overlay->setID("physics-overlay"_spr);
-    overlay->setZOrder(100000); 
+    overlay->setZOrder(105); 
     layer->addChild(overlay);
     return overlay;
 }
@@ -546,8 +634,10 @@ PhysicsOverlay* addPhysicsOverlay(CCLayer* layer) {
 class $modify(MyMenuLayer, MenuLayer) {
     bool init() {
         if (!MenuLayer::init()) return false;
-        auto overlay = addPhysicsOverlay(this);
-        overlay->forceFirstFrame();
+        if (Mod::get()->getSettingValue<bool>("menu-layer-physics")) {
+            auto overlay = addPhysicsOverlay(this);
+            overlay->forceFirstFrame();
+        }
         return true;
     }
 };
@@ -555,8 +645,10 @@ class $modify(MyMenuLayer, MenuLayer) {
 class $modify(MyCreatorLayer, CreatorLayer) {
     bool init() {
         if (!CreatorLayer::init()) return false;
-        auto overlay = addPhysicsOverlay(this);
-        overlay->forceFirstFrame();
+        if (Mod::get()->getSettingValue<bool>("creator-layer-physics")) {
+            auto overlay = addPhysicsOverlay(this);
+            overlay->forceFirstFrame();
+        }
         return true;
     }
 };
